@@ -1,17 +1,23 @@
-import { Request, Response, NextFunction } from 'express';
+import { RequestHandler } from 'express';
 import { AuthService } from '../application/auth.service.js';
 import { ApiResponse } from '../../../shared/types/index.js';
 import { UnauthorizedError } from '../../../shared/errors/app-error.js';
 
-export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+export interface AuthController {
+  register: RequestHandler;
+  login: RequestHandler;
+  refresh: RequestHandler;
+  logout: RequestHandler;
+  me: RequestHandler;
+}
 
-  register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export function createAuthController(authService: AuthService): AuthController {
+  const register: RequestHandler = async (req, res, next) => {
     try {
       const userAgent = req.headers['user-agent'];
       const ipAddress = req.ip || req.socket.remoteAddress;
 
-      const result = await this.authService.register({
+      const result = await authService.register({
         ...req.body,
         userAgent,
         ipAddress,
@@ -27,12 +33,12 @@ export class AuthController {
     }
   };
 
-  login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const login: RequestHandler = async (req, res, next) => {
     try {
       const userAgent = req.headers['user-agent'];
       const ipAddress = req.ip || req.socket.remoteAddress;
 
-      const result = await this.authService.login({
+      const result = await authService.login({
         ...req.body,
         userAgent,
         ipAddress,
@@ -48,13 +54,13 @@ export class AuthController {
     }
   };
 
-  refresh = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const refresh: RequestHandler = async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
       const userAgent = req.headers['user-agent'];
       const ipAddress = req.ip || req.socket.remoteAddress;
 
-      const tokens = await this.authService.refreshTokens(refreshToken, userAgent, ipAddress);
+      const tokens = await authService.refreshTokens(refreshToken, userAgent, ipAddress);
 
       const response: ApiResponse<typeof tokens> = {
         data: tokens,
@@ -66,10 +72,10 @@ export class AuthController {
     }
   };
 
-  logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const logout: RequestHandler = async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
-      await this.authService.logout(refreshToken);
+      await authService.logout(refreshToken);
 
       res.status(200).json({
         data: { message: 'Logged out successfully' },
@@ -79,13 +85,13 @@ export class AuthController {
     }
   };
 
-  me = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const me: RequestHandler = async (req, res, next) => {
     try {
       if (!req.user?.id) {
         throw new UnauthorizedError();
       }
 
-      const user = await this.authService.getCurrentUser(req.user.id);
+      const user = await authService.getCurrentUser(req.user.id);
 
       const response: ApiResponse<typeof user> = {
         data: user,
@@ -95,5 +101,13 @@ export class AuthController {
     } catch (err) {
       next(err);
     }
+  };
+
+  return {
+    register,
+    login,
+    refresh,
+    logout,
+    me,
   };
 }

@@ -1,17 +1,21 @@
-import { Request, Response, NextFunction } from 'express';
+import { RequestHandler } from 'express';
 import { JobService } from '../application/job.service.js';
 import { ApiResponse } from '../../../shared/types/index.js';
 import { JobEntity } from '../domain/job.entity.js';
 
-export class JobController {
-  constructor(private readonly jobService: JobService) {}
+export interface JobController {
+  submitJob: RequestHandler;
+  getJobById: RequestHandler;
+  listJobs: RequestHandler;
+}
 
-  submitJob = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export function createJobController(jobService: JobService): JobController {
+  const submitJob: RequestHandler = async (req, res, next) => {
     try {
       const { type, payload, maxAttempts } = req.body;
       const userId = req.user?.id || null;
 
-      const job = await this.jobService.submitJob({
+      const job = await jobService.submitJob({
         type,
         payload,
         userId,
@@ -28,13 +32,13 @@ export class JobController {
     }
   };
 
-  getJobById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const getJobById: RequestHandler = async (req, res, next) => {
     try {
       const id = req.params.id as string;
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      const job = await this.jobService.getJobById(id, userId, role);
+      const job = await jobService.getJobById(id, userId, role);
 
       const response: ApiResponse<JobEntity> = {
         data: job,
@@ -46,14 +50,14 @@ export class JobController {
     }
   };
 
-  listJobs = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const listJobs: RequestHandler = async (req, res, next) => {
     try {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
       const userId = req.user?.id;
       const role = req.user?.role;
 
-      const result = await this.jobService.listJobs({ page, limit }, userId, role);
+      const result = await jobService.listJobs({ page, limit }, userId, role);
 
       const response: ApiResponse<JobEntity[]> = {
         data: result.items,
@@ -69,5 +73,11 @@ export class JobController {
     } catch (err) {
       next(err);
     }
+  };
+
+  return {
+    submitJob,
+    getJobById,
+    listJobs,
   };
 }

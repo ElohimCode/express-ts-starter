@@ -4,8 +4,8 @@ import { ITokenService, AccessTokenPayload } from '../domain/token.service.inter
 import { env } from '../../../config/env.js';
 import { UnauthorizedError } from '../../../shared/errors/app-error.js';
 
-export class JwtTokenService implements ITokenService {
-  signAccessToken(payload: AccessTokenPayload): string {
+export function createJwtTokenService(): ITokenService {
+  function signAccessToken(payload: AccessTokenPayload): string {
     return jwt.sign(
       {
         sub: payload.sub,
@@ -22,7 +22,7 @@ export class JwtTokenService implements ITokenService {
     );
   }
 
-  verifyAccessToken(token: string): AccessTokenPayload {
+  function verifyAccessToken(token: string): AccessTokenPayload {
     try {
       const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, {
         issuer: env.JWT_ISSUER,
@@ -47,16 +47,43 @@ export class JwtTokenService implements ITokenService {
     }
   }
 
-  generateRefreshToken(): string {
+  function generateRefreshToken(): string {
     return randomBytes(40).toString('hex');
   }
 
-  hashRefreshToken(token: string): string {
+  function hashRefreshToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  getRefreshTokenExpiryDate(): Date {
+  function getRefreshTokenExpiryDate(): Date {
     const days = env.JWT_REFRESH_EXPIRATION_DAYS;
     return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  }
+
+  return {
+    signAccessToken,
+    verifyAccessToken,
+    generateRefreshToken,
+    hashRefreshToken,
+    getRefreshTokenExpiryDate,
+  };
+}
+
+export class JwtTokenService implements ITokenService {
+  private service: ITokenService = createJwtTokenService();
+  signAccessToken(payload: AccessTokenPayload) {
+    return this.service.signAccessToken(payload);
+  }
+  verifyAccessToken(token: string) {
+    return this.service.verifyAccessToken(token);
+  }
+  generateRefreshToken() {
+    return this.service.generateRefreshToken();
+  }
+  hashRefreshToken(token: string) {
+    return this.service.hashRefreshToken(token);
+  }
+  getRefreshTokenExpiryDate() {
+    return this.service.getRefreshTokenExpiryDate();
   }
 }

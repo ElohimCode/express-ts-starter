@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { JobService } from '../../src/modules/jobs/application/job.service.js';
+import { createJobService, JobService } from '../../src/modules/jobs/application/job.service.js';
 import { IJobRepository } from '../../src/modules/jobs/domain/job.repository.interface.js';
 import { NotFoundError, ForbiddenError } from '../../src/shared/errors/app-error.js';
 
@@ -15,7 +15,7 @@ describe('JobService (Unit)', () => {
       findAll: vi.fn(),
     };
 
-    jobService = new JobService(mockJobRepo);
+    jobService = createJobService({ jobRepository: mockJobRepo });
   });
 
   describe('submitJob', () => {

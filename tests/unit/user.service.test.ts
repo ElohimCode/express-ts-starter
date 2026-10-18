@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UserService } from '../../src/modules/users/application/user.service.js';
+import {
+  createUserService,
+  UserService,
+} from '../../src/modules/users/application/user.service.js';
 import { IUserRepository } from '../../src/modules/users/domain/user.repository.interface.js';
 import { NotFoundError } from '../../src/shared/errors/app-error.js';
 
@@ -17,7 +20,7 @@ describe('UserService (Unit)', () => {
       count: vi.fn(),
     };
 
-    userService = new UserService(mockUserRepo);
+    userService = createUserService({ userRepository: mockUserRepo });
   });
 
   describe('getProfile', () => {

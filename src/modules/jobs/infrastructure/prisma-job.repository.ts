@@ -8,10 +8,8 @@ import { IJobRepository, CreateJobWithOutboxResult } from '../domain/job.reposit
 import { JobEntity, JobStatus, SubmitJobInput } from '../domain/job.entity.js';
 import { PaginatedResult, PaginationParams } from '../../../shared/types/index.js';
 
-export class PrismaJobRepository implements IJobRepository {
-  constructor(private readonly prisma: PrismaClient) {}
-
-  private mapToEntity(job: PrismaJob): JobEntity {
+export function createPrismaJobRepository(prisma: PrismaClient): IJobRepository {
+  function mapToEntity(job: PrismaJob): JobEntity {
     return {
       id: job.id,
       type: job.type,
@@ -29,8 +27,8 @@ export class PrismaJobRepository implements IJobRepository {
     };
   }
 
-  async createWithOutbox(input: SubmitJobInput): Promise<CreateJobWithOutboxResult> {
-    return this.prisma.$transaction(async (tx) => {
+  async function createWithOutbox(input: SubmitJobInput): Promise<CreateJobWithOutboxResult> {
+    return prisma.$transaction(async (tx) => {
       // 1. Create Job in database
       const job = await tx.job.create({
         data: {
@@ -58,20 +56,20 @@ export class PrismaJobRepository implements IJobRepository {
       });
 
       return {
-        job: this.mapToEntity(job),
+        job: mapToEntity(job),
         outboxEventId: outbox.id,
       };
     });
   }
 
-  async findById(id: string): Promise<JobEntity | null> {
-    const job = await this.prisma.job.findUnique({
+  async function findById(id: string): Promise<JobEntity | null> {
+    const job = await prisma.job.findUnique({
       where: { id },
     });
-    return job ? this.mapToEntity(job) : null;
+    return job ? mapToEntity(job) : null;
   }
 
-  async updateStatus(
+  async function updateStatus(
     id: string,
     status: JobStatus,
     data?: {
@@ -93,15 +91,15 @@ export class PrismaJobRepository implements IJobRepository {
       ...(data?.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
     };
 
-    const job = await this.prisma.job.update({
+    const job = await prisma.job.update({
       where: { id },
       data: updateData,
     });
 
-    return this.mapToEntity(job);
+    return mapToEntity(job);
   }
 
-  async findAll(
+  async function findAll(
     params: PaginationParams,
     userId?: string | null
   ): Promise<PaginatedResult<JobEntity>> {
@@ -112,8 +110,8 @@ export class PrismaJobRepository implements IJobRepository {
     const where: Prisma.JobWhereInput = userId ? { userId } : {};
 
     const [total, jobs] = await Promise.all([
-      this.prisma.job.count({ where }),
-      this.prisma.job.findMany({
+      prisma.job.count({ where }),
+      prisma.job.findMany({
         where,
         skip,
         take: limit,
@@ -122,11 +120,48 @@ export class PrismaJobRepository implements IJobRepository {
     ]);
 
     return {
-      items: jobs.map((j) => this.mapToEntity(j)),
+      items: jobs.map(mapToEntity),
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  return {
+    createWithOutbox,
+    findById,
+    updateStatus,
+    findAll,
+  };
+}
+
+// Preserve class alias for backwards compatibility
+export class PrismaJobRepository {
+  private repo: IJobRepository;
+  constructor(prisma: PrismaClient) {
+    this.repo = createPrismaJobRepository(prisma);
+  }
+  createWithOutbox(input: SubmitJobInput) {
+    return this.repo.createWithOutbox(input);
+  }
+  findById(id: string) {
+    return this.repo.findById(id);
+  }
+  updateStatus(
+    id: string,
+    status: JobStatus,
+    data?: {
+      result?: Record<string, unknown> | null;
+      error?: string | null;
+      attempts?: number;
+      startedAt?: Date | null;
+      completedAt?: Date | null;
+    }
+  ) {
+    return this.repo.updateStatus(id, status, data);
+  }
+  findAll(params: PaginationParams, userId?: string | null) {
+    return this.repo.findAll(params, userId);
   }
 }

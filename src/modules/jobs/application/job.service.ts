@@ -3,20 +3,38 @@ import { JobEntity, SubmitJobInput } from '../domain/job.entity.js';
 import { NotFoundError, ForbiddenError } from '../../../shared/errors/app-error.js';
 import { PaginatedResult, PaginationParams } from '../../../shared/types/index.js';
 
-export class JobService {
-  constructor(private readonly jobRepository: IJobRepository) {}
+export interface JobServiceDependencies {
+  jobRepository: IJobRepository;
+}
 
-  async submitJob(input: SubmitJobInput): Promise<JobEntity> {
-    const result = await this.jobRepository.createWithOutbox(input);
+export interface JobService {
+  submitJob(input: SubmitJobInput): Promise<JobEntity>;
+  getJobById(
+    id: string,
+    requestingUserId?: string,
+    userRole?: 'USER' | 'ADMIN'
+  ): Promise<JobEntity>;
+  listJobs(
+    params: PaginationParams,
+    requestingUserId?: string,
+    userRole?: 'USER' | 'ADMIN'
+  ): Promise<PaginatedResult<JobEntity>>;
+}
+
+export function createJobService(dependencies: JobServiceDependencies): JobService {
+  const { jobRepository } = dependencies;
+
+  async function submitJob(input: SubmitJobInput): Promise<JobEntity> {
+    const result = await jobRepository.createWithOutbox(input);
     return result.job;
   }
 
-  async getJobById(
+  async function getJobById(
     id: string,
     requestingUserId?: string,
     userRole?: 'USER' | 'ADMIN'
   ): Promise<JobEntity> {
-    const job = await this.jobRepository.findById(id);
+    const job = await jobRepository.findById(id);
     if (!job) {
       throw new NotFoundError('Job not found');
     }
@@ -29,13 +47,18 @@ export class JobService {
     return job;
   }
 
-  async listJobs(
+  async function listJobs(
     params: PaginationParams,
     requestingUserId?: string,
     userRole?: 'USER' | 'ADMIN'
   ): Promise<PaginatedResult<JobEntity>> {
-    // Non-admins only see their own jobs
     const scopedUserId = userRole === 'ADMIN' ? null : requestingUserId;
-    return this.jobRepository.findAll(params, scopedUserId);
+    return jobRepository.findAll(params, scopedUserId);
   }
+
+  return {
+    submitJob,
+    getJobById,
+    listJobs,
+  };
 }

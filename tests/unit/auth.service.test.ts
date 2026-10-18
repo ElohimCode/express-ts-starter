@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuthService } from '../../src/modules/auth/application/auth.service.js';
+import { createAuthService, AuthService } from '../../src/modules/auth/application/auth.service.js';
 import { IUserRepository } from '../../src/modules/users/domain/user.repository.interface.js';
 import { IPasswordHasher } from '../../src/modules/auth/domain/password-hasher.interface.js';
 import { ITokenService } from '../../src/modules/auth/domain/token.service.interface.js';
@@ -54,7 +54,12 @@ describe('AuthService (Unit)', () => {
       revokeAllUserSessions: vi.fn(),
     };
 
-    authService = new AuthService(mockUserRepo, mockHasher, mockTokenService, mockSessionRepo);
+    authService = createAuthService({
+      userRepository: mockUserRepo,
+      passwordHasher: mockHasher,
+      tokenService: mockTokenService,
+      authSessionRepository: mockSessionRepo,
+    });
   });
 
   describe('register', () => {

@@ -9,8 +9,8 @@ This starter kit is designed as a **modular monolith** adhering to pragmatic **C
 - **Domain Layer (`domain/`)**: Pure business logic and domain interfaces. Must never import Express, Prisma, Redis, BullMQ, or third-party I/O libraries.
 - **Application Layer (`application/`)**: Implements user use cases (e.g. `AuthService`, `UserService`, `JobService`). Depends only on domain abstractions and interfaces. Express request and response objects NEVER penetrate the application layer.
 - **Infrastructure Layer (`infrastructure/`)**: Implements technical adapters (Prisma repositories, Redis connection, BullMQ queue, Pino logger, Argon2 hasher). Implements domain and application interfaces.
-- **Presentation Layer (`presentation/`)**: HTTP controllers, middleware, input validation schemas (Zod), and routers. Translates incoming HTTP requests into application commands and formats application results into standard API responses.
-- **Composition Root (`src/container/register-dependencies.ts`)**: Creates singletons, wires concrete adapters into services, and exposes an immutable `AppContainer`. Avoids hidden global service locators and circular dependencies.
+- **Presentation Layer (`presentation/`)**: Function-based HTTP controllers returning standard Express `RequestHandler`s, middleware, input validation schemas (Zod), and module-level router factories. Translates incoming HTTP requests into application commands and formats application results into standard API responses.
+- **Composition Root (`src/container/register-dependencies.ts`)**: Creates singletons, wires concrete adapters into function-based services and controllers, and exposes an immutable `AppContainer`. Avoids hidden global service locators, static controller classes, and circular dependencies.
 
 ```
        ┌────────────────────────────────────────────────────────┐

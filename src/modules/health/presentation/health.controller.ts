@@ -1,23 +1,32 @@
-import { Request, Response } from 'express';
+import { RequestHandler } from 'express';
 import { PrismaService } from '../../../infrastructure/database/prisma.service.js';
 import { RedisService } from '../../../infrastructure/cache/redis.service.js';
 
-export class HealthController {
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly redisService?: RedisService
-  ) {}
+export interface HealthControllerDependencies {
+  prismaService: PrismaService;
+  redisService?: RedisService;
+}
 
-  live = (_req: Request, res: Response): void => {
+export interface HealthController {
+  live: RequestHandler;
+  ready: RequestHandler;
+}
+
+export function createHealthController(
+  dependencies: HealthControllerDependencies
+): HealthController {
+  const { prismaService, redisService } = dependencies;
+
+  const live: RequestHandler = (_req, res) => {
     res.status(200).json({
       status: 'UP',
       timestamp: new Date().toISOString(),
     });
   };
 
-  ready = async (_req: Request, res: Response): Promise<void> => {
-    const dbHealthy = await this.prismaService.isHealthy();
-    const redisHealthy = this.redisService ? await this.redisService.isHealthy() : true;
+  const ready: RequestHandler = async (_req, res) => {
+    const dbHealthy = await prismaService.isHealthy();
+    const redisHealthy = redisService ? await redisService.isHealthy() : true;
 
     const isReady = dbHealthy && redisHealthy;
     const statusCode = isReady ? 200 : 503;
@@ -27,8 +36,13 @@ export class HealthController {
       timestamp: new Date().toISOString(),
       checks: {
         database: dbHealthy ? 'UP' : 'DOWN',
-        ...(this.redisService ? { redis: redisHealthy ? 'UP' : 'DOWN' } : {}),
+        ...(redisService ? { redis: redisHealthy ? 'UP' : 'DOWN' } : {}),
       },
     });
+  };
+
+  return {
+    live,
+    ready,
   };
 }

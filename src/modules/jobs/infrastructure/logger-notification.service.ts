@@ -5,8 +5,10 @@ import {
 } from '../domain/notification.service.interface.js';
 import { logger } from '../../../config/logger.js';
 
-export class LoggerNotificationService implements INotificationService {
-  async send(payload: NotificationPayload): Promise<{ delivered: boolean; messageId: string }> {
+export function createLoggerNotificationService(): INotificationService {
+  async function send(
+    payload: NotificationPayload
+  ): Promise<{ delivered: boolean; messageId: string }> {
     const messageId = `msg_${randomUUID()}`;
 
     logger.info(
@@ -23,5 +25,16 @@ export class LoggerNotificationService implements INotificationService {
       delivered: true,
       messageId,
     };
+  }
+
+  return {
+    send,
+  };
+}
+
+export class LoggerNotificationService implements INotificationService {
+  private service: INotificationService = createLoggerNotificationService();
+  send(payload: NotificationPayload) {
+    return this.service.send(payload);
   }
 }

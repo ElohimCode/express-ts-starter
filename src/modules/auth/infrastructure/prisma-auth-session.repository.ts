@@ -6,10 +6,8 @@ import {
 } from '../domain/auth-session.repository.interface.js';
 import { UnauthorizedError } from '../../../shared/errors/app-error.js';
 
-export class PrismaAuthSessionRepository implements IAuthSessionRepository {
-  constructor(private readonly prisma: PrismaClient) {}
-
-  private mapToEntity(session: PrismaSession): RefreshTokenSessionEntity {
+export function createPrismaAuthSessionRepository(prisma: PrismaClient): IAuthSessionRepository {
+  function mapToEntity(session: PrismaSession): RefreshTokenSessionEntity {
     return {
       id: session.id,
       userId: session.userId,
@@ -23,8 +21,8 @@ export class PrismaAuthSessionRepository implements IAuthSessionRepository {
     };
   }
 
-  async createSession(data: CreateSessionData): Promise<RefreshTokenSessionEntity> {
-    const session = await this.prisma.refreshTokenSession.create({
+  async function createSession(data: CreateSessionData): Promise<RefreshTokenSessionEntity> {
+    const session = await prisma.refreshTokenSession.create({
       data: {
         userId: data.userId,
         tokenHash: data.tokenHash,
@@ -33,21 +31,28 @@ export class PrismaAuthSessionRepository implements IAuthSessionRepository {
         ipAddress: data.ipAddress || null,
       },
     });
-    return this.mapToEntity(session);
+    return mapToEntity(session);
   }
 
-  async findSessionByHash(tokenHash: string): Promise<RefreshTokenSessionEntity | null> {
-    const session = await this.prisma.refreshTokenSession.findUnique({
+  async function findSessionByHash(tokenHash: string): Promise<RefreshTokenSessionEntity | null> {
+    const session = await prisma.refreshTokenSession.findUnique({
       where: { tokenHash },
     });
-    return session ? this.mapToEntity(session) : null;
+    return session ? mapToEntity(session) : null;
   }
 
-  async rotateSession(
+  async function revokeAllUserSessions(userId: string): Promise<void> {
+    await prisma.refreshTokenSession.updateMany({
+      where: { userId },
+      data: { isRevoked: true },
+    });
+  }
+
+  async function rotateSession(
     oldTokenHash: string,
     newSessionData: CreateSessionData
   ): Promise<RefreshTokenSessionEntity> {
-    return this.prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       const existing = await tx.refreshTokenSession.findUnique({
         where: { tokenHash: oldTokenHash },
       });
@@ -59,7 +64,7 @@ export class PrismaAuthSessionRepository implements IAuthSessionRepository {
       // Reuse detection: If token was already revoked, someone is replaying it!
       if (existing.isRevoked) {
         // Invalidate all tokens for this user family (persisted outside rolled-back transaction)
-        await this.revokeAllUserSessions(existing.userId);
+        await revokeAllUserSessions(existing.userId);
         throw new UnauthorizedError('Token reuse detected. All sessions have been terminated.');
       }
 
@@ -84,21 +89,45 @@ export class PrismaAuthSessionRepository implements IAuthSessionRepository {
         },
       });
 
-      return this.mapToEntity(newSession);
+      return mapToEntity(newSession);
     });
   }
 
-  async revokeSession(tokenHash: string): Promise<void> {
-    await this.prisma.refreshTokenSession.updateMany({
+  async function revokeSession(tokenHash: string): Promise<void> {
+    await prisma.refreshTokenSession.updateMany({
       where: { tokenHash },
       data: { isRevoked: true },
     });
   }
 
-  async revokeAllUserSessions(userId: string): Promise<void> {
-    await this.prisma.refreshTokenSession.updateMany({
-      where: { userId },
-      data: { isRevoked: true },
-    });
+  return {
+    createSession,
+    findSessionByHash,
+    rotateSession,
+    revokeSession,
+    revokeAllUserSessions,
+  };
+}
+
+// Preserve class alias for backwards compatibility
+export class PrismaAuthSessionRepository {
+  private repo: IAuthSessionRepository;
+  constructor(prisma: PrismaClient) {
+    this.repo = createPrismaAuthSessionRepository(prisma);
+  }
+  createSession(data: CreateSessionData) {
+    return this.repo.createSession(data);
+  }
+  findSessionByHash(tokenHash: string) {
+    return this.repo.findSessionByHash(tokenHash);
+  }
+  rotateSession(oldTokenHash: string, newSessionData: CreateSessionData) {
+    return this.repo.rotateSession(oldTokenHash, newSessionData);
+  }
+  revokeSession(tokenHash: string) {
+    return this.repo.revokeSession(tokenHash);
+  }
+  revokeAllUserSessions(userId: string) {
+    return this.repo.revokeAllUserSessions(userId);
   }
 }

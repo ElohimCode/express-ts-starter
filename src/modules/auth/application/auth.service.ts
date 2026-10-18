@@ -35,140 +35,46 @@ export interface AuthResult {
   tokens: AuthTokens;
 }
 
-export class AuthService {
-  constructor(
-    private readonly userRepository: IUserRepository,
-    private readonly passwordHasher: IPasswordHasher,
-    private readonly tokenService: ITokenService,
-    private readonly authSessionRepository: IAuthSessionRepository
-  ) {}
+export interface AuthServiceDependencies {
+  userRepository: IUserRepository;
+  passwordHasher: IPasswordHasher;
+  tokenService: ITokenService;
+  authSessionRepository: IAuthSessionRepository;
+}
 
-  async register(input: RegisterInput): Promise<AuthResult> {
-    const existing = await this.userRepository.findByEmail(input.email);
-    if (existing) {
-      throw new ConflictError('A user with this email address already exists');
-    }
-
-    const passwordHash = await this.passwordHasher.hash(input.password);
-    const user = await this.userRepository.create({
-      email: input.email,
-      passwordHash,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      role: 'USER',
-    });
-
-    const tokens = await this.createSessionAndIssueTokens(
-      user.id,
-      user.email,
-      user.role,
-      input.userAgent,
-      input.ipAddress
-    );
-
-    return {
-      user: toUserProfile(user),
-      tokens,
-    };
-  }
-
-  async login(input: LoginInput): Promise<AuthResult> {
-    const user = await this.userRepository.findByEmail(input.email);
-    // Timing-safe/generic message against enumeration
-    if (!user) {
-      throw new UnauthorizedError('Invalid email or password');
-    }
-
-    const passwordMatches = await this.passwordHasher.verify(user.passwordHash, input.password);
-    if (!passwordMatches) {
-      throw new UnauthorizedError('Invalid email or password');
-    }
-
-    if (!user.isActive) {
-      throw new UnauthorizedError('Account has been deactivated');
-    }
-
-    const tokens = await this.createSessionAndIssueTokens(
-      user.id,
-      user.email,
-      user.role,
-      input.userAgent,
-      input.ipAddress
-    );
-
-    return {
-      user: toUserProfile(user),
-      tokens,
-    };
-  }
-
-  async refreshTokens(
+export interface AuthService {
+  register(input: RegisterInput): Promise<AuthResult>;
+  login(input: LoginInput): Promise<AuthResult>;
+  refreshTokens(
     oldRefreshToken: string,
     userAgent?: string,
     ipAddress?: string
-  ): Promise<AuthTokens> {
-    const oldTokenHash = this.tokenService.hashRefreshToken(oldRefreshToken);
-    const newRefreshToken = this.tokenService.generateRefreshToken();
-    const newTokenHash = this.tokenService.hashRefreshToken(newRefreshToken);
-    const expiresAt = this.tokenService.getRefreshTokenExpiryDate();
+  ): Promise<AuthTokens>;
+  logout(refreshToken: string): Promise<void>;
+  getCurrentUser(userId: string): Promise<UserProfile>;
+}
 
-    // Atomic rotation in repository (with reuse detection)
-    const newSession = await this.authSessionRepository.rotateSession(oldTokenHash, {
-      userId: '', // populated in transaction from old session
-      tokenHash: newTokenHash,
-      expiresAt,
-      userAgent,
-      ipAddress,
-    });
+export function createAuthService(dependencies: AuthServiceDependencies): AuthService {
+  const { userRepository, passwordHasher, tokenService, authSessionRepository } = dependencies;
 
-    const user = await this.userRepository.findById(newSession.userId);
-    if (!user || !user.isActive) {
-      throw new UnauthorizedError('User account is invalid or deactivated');
-    }
-
-    const accessToken = this.tokenService.signAccessToken({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-    });
-
-    return {
-      accessToken,
-      refreshToken: newRefreshToken,
-    };
-  }
-
-  async logout(refreshToken: string): Promise<void> {
-    const tokenHash = this.tokenService.hashRefreshToken(refreshToken);
-    await this.authSessionRepository.revokeSession(tokenHash);
-  }
-
-  async getCurrentUser(userId: string): Promise<UserProfile> {
-    const user = await this.userRepository.findById(userId);
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
-    return toUserProfile(user);
-  }
-
-  private async createSessionAndIssueTokens(
+  async function createSessionAndIssueTokens(
     userId: string,
     email: string,
     role: 'USER' | 'ADMIN',
     userAgent?: string,
     ipAddress?: string
   ): Promise<AuthTokens> {
-    const accessToken = this.tokenService.signAccessToken({
+    const accessToken = tokenService.signAccessToken({
       sub: userId,
       email,
       role,
     });
 
-    const rawRefreshToken = this.tokenService.generateRefreshToken();
-    const tokenHash = this.tokenService.hashRefreshToken(rawRefreshToken);
-    const expiresAt = this.tokenService.getRefreshTokenExpiryDate();
+    const rawRefreshToken = tokenService.generateRefreshToken();
+    const tokenHash = tokenService.hashRefreshToken(rawRefreshToken);
+    const expiresAt = tokenService.getRefreshTokenExpiryDate();
 
-    await this.authSessionRepository.createSession({
+    await authSessionRepository.createSession({
       userId,
       tokenHash,
       expiresAt,
@@ -181,4 +87,120 @@ export class AuthService {
       refreshToken: rawRefreshToken,
     };
   }
+
+  async function register(input: RegisterInput): Promise<AuthResult> {
+    const existing = await userRepository.findByEmail(input.email);
+    if (existing) {
+      throw new ConflictError('A user with this email address already exists');
+    }
+
+    const passwordHash = await passwordHasher.hash(input.password);
+    const user = await userRepository.create({
+      email: input.email,
+      passwordHash,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      role: 'USER',
+    });
+
+    const tokens = await createSessionAndIssueTokens(
+      user.id,
+      user.email,
+      user.role,
+      input.userAgent,
+      input.ipAddress
+    );
+
+    return {
+      user: toUserProfile(user),
+      tokens,
+    };
+  }
+
+  async function login(input: LoginInput): Promise<AuthResult> {
+    const user = await userRepository.findByEmail(input.email);
+    // Timing-safe/generic message against enumeration
+    if (!user) {
+      throw new UnauthorizedError('Invalid email or password');
+    }
+
+    const passwordMatches = await passwordHasher.verify(user.passwordHash, input.password);
+    if (!passwordMatches) {
+      throw new UnauthorizedError('Invalid email or password');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedError('Account has been deactivated');
+    }
+
+    const tokens = await createSessionAndIssueTokens(
+      user.id,
+      user.email,
+      user.role,
+      input.userAgent,
+      input.ipAddress
+    );
+
+    return {
+      user: toUserProfile(user),
+      tokens,
+    };
+  }
+
+  async function refreshTokens(
+    oldRefreshToken: string,
+    userAgent?: string,
+    ipAddress?: string
+  ): Promise<AuthTokens> {
+    const oldTokenHash = tokenService.hashRefreshToken(oldRefreshToken);
+    const newRefreshToken = tokenService.generateRefreshToken();
+    const newTokenHash = tokenService.hashRefreshToken(newRefreshToken);
+    const expiresAt = tokenService.getRefreshTokenExpiryDate();
+
+    // Atomic rotation in repository (with reuse detection)
+    const newSession = await authSessionRepository.rotateSession(oldTokenHash, {
+      userId: '', // populated in transaction from old session
+      tokenHash: newTokenHash,
+      expiresAt,
+      userAgent,
+      ipAddress,
+    });
+
+    const user = await userRepository.findById(newSession.userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError('User account is invalid or deactivated');
+    }
+
+    const accessToken = tokenService.signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+    };
+  }
+
+  async function logout(refreshToken: string): Promise<void> {
+    const tokenHash = tokenService.hashRefreshToken(refreshToken);
+    await authSessionRepository.revokeSession(tokenHash);
+  }
+
+  async function getCurrentUser(userId: string): Promise<UserProfile> {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+    return toUserProfile(user);
+  }
+
+  return {
+    register,
+    login,
+    refreshTokens,
+    logout,
+    getCurrentUser,
+  };
 }

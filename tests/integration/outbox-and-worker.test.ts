@@ -1,22 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient, OutboxStatus } from '@prisma/client';
 import { Redis } from 'ioredis';
-import { PrismaJobRepository } from '../../src/modules/jobs/infrastructure/prisma-job.repository.js';
+import { createPrismaJobRepository } from '../../src/modules/jobs/infrastructure/prisma-job.repository.js';
+import { IJobRepository } from '../../src/modules/jobs/domain/job.repository.interface.js';
 import { BullMqQueueService } from '../../src/infrastructure/queue/bullmq-queue.service.js';
 import { OutboxDispatcher } from '../../src/infrastructure/queue/outbox-dispatcher.js';
 import { WorkerRunner } from '../../src/infrastructure/queue/worker-runner.js';
-import { LoggerNotificationService } from '../../src/modules/jobs/infrastructure/logger-notification.service.js';
+import { createLoggerNotificationService } from '../../src/modules/jobs/infrastructure/logger-notification.service.js';
+import { INotificationService } from '../../src/modules/jobs/domain/notification.service.interface.js';
 import { JOB_TYPES } from '../../src/modules/jobs/infrastructure/queue.constants.js';
 import { env } from '../../src/config/env.js';
 
 describe('Outbox and Worker Lifecycle (Integration)', () => {
   let prisma: PrismaClient;
   let redis: Redis;
-  let jobRepo: PrismaJobRepository;
+  let jobRepo: IJobRepository;
   let queueService: BullMqQueueService;
   let outboxDispatcher: OutboxDispatcher;
   let workerRunner: WorkerRunner;
-  let notificationService: LoggerNotificationService;
+  let notificationService: INotificationService;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
@@ -30,10 +32,10 @@ describe('Outbox and Worker Lifecycle (Integration)', () => {
     });
     await redis.ping();
 
-    jobRepo = new PrismaJobRepository(prisma);
+    jobRepo = createPrismaJobRepository(prisma);
     queueService = new BullMqQueueService(redis);
     outboxDispatcher = new OutboxDispatcher(prisma, queueService, 10, 500);
-    notificationService = new LoggerNotificationService();
+    notificationService = createLoggerNotificationService();
     workerRunner = new WorkerRunner(redis, jobRepo, notificationService, 2);
   });
 

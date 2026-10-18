@@ -7,10 +7,8 @@ import {
 import { UserEntity } from '../domain/user.entity.js';
 import { PaginatedResult, PaginationParams } from '../../../shared/types/index.js';
 
-export class PrismaUserRepository implements IUserRepository {
-  constructor(private readonly prisma: PrismaClient) {}
-
-  private mapToEntity(user: PrismaUser): UserEntity {
+export function createPrismaUserRepository(prisma: PrismaClient): IUserRepository {
+  function mapToEntity(user: PrismaUser): UserEntity {
     return {
       id: user.id,
       email: user.email,
@@ -24,22 +22,22 @@ export class PrismaUserRepository implements IUserRepository {
     };
   }
 
-  async findById(id: string): Promise<UserEntity | null> {
-    const user = await this.prisma.user.findUnique({
+  async function findById(id: string): Promise<UserEntity | null> {
+    const user = await prisma.user.findUnique({
       where: { id },
     });
-    return user ? this.mapToEntity(user) : null;
+    return user ? mapToEntity(user) : null;
   }
 
-  async findByEmail(email: string): Promise<UserEntity | null> {
-    const user = await this.prisma.user.findUnique({
+  async function findByEmail(email: string): Promise<UserEntity | null> {
+    const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
     });
-    return user ? this.mapToEntity(user) : null;
+    return user ? mapToEntity(user) : null;
   }
 
-  async create(data: CreateUserData): Promise<UserEntity> {
-    const user = await this.prisma.user.create({
+  async function create(data: CreateUserData): Promise<UserEntity> {
+    const user = await prisma.user.create({
       data: {
         email: data.email.toLowerCase().trim(),
         passwordHash: data.passwordHash,
@@ -48,11 +46,11 @@ export class PrismaUserRepository implements IUserRepository {
         role: data.role || 'USER',
       },
     });
-    return this.mapToEntity(user);
+    return mapToEntity(user);
   }
 
-  async update(id: string, data: UpdateUserData): Promise<UserEntity> {
-    const user = await this.prisma.user.update({
+  async function update(id: string, data: UpdateUserData): Promise<UserEntity> {
+    const user = await prisma.user.update({
       where: { id },
       data: {
         ...(data.firstName !== undefined ? { firstName: data.firstName.trim() } : {}),
@@ -60,17 +58,17 @@ export class PrismaUserRepository implements IUserRepository {
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       },
     });
-    return this.mapToEntity(user);
+    return mapToEntity(user);
   }
 
-  async findAll(params: PaginationParams): Promise<PaginatedResult<UserEntity>> {
+  async function findAll(params: PaginationParams): Promise<PaginatedResult<UserEntity>> {
     const page = Math.max(1, params.page);
     const limit = Math.max(1, Math.min(100, params.limit));
     const skip = (page - 1) * limit;
 
     const [total, users] = await Promise.all([
-      this.prisma.user.count(),
-      this.prisma.user.findMany({
+      prisma.user.count(),
+      prisma.user.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -78,7 +76,7 @@ export class PrismaUserRepository implements IUserRepository {
     ]);
 
     return {
-      items: users.map((u) => this.mapToEntity(u)),
+      items: users.map(mapToEntity),
       total,
       page,
       limit,
@@ -86,7 +84,42 @@ export class PrismaUserRepository implements IUserRepository {
     };
   }
 
-  async count(): Promise<number> {
-    return this.prisma.user.count();
+  async function count(): Promise<number> {
+    return prisma.user.count();
+  }
+
+  return {
+    findById,
+    findByEmail,
+    create,
+    update,
+    findAll,
+    count,
+  };
+}
+
+// Preserve class alias for backwards compatibility if needed
+export class PrismaUserRepository {
+  private repo: IUserRepository;
+  constructor(prisma: PrismaClient) {
+    this.repo = createPrismaUserRepository(prisma);
+  }
+  findById(id: string) {
+    return this.repo.findById(id);
+  }
+  findByEmail(email: string) {
+    return this.repo.findByEmail(email);
+  }
+  create(data: CreateUserData) {
+    return this.repo.create(data);
+  }
+  update(id: string, data: UpdateUserData) {
+    return this.repo.update(id, data);
+  }
+  findAll(params: PaginationParams) {
+    return this.repo.findAll(params);
+  }
+  count() {
+    return this.repo.count();
   }
 }

@@ -1,18 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PrismaClient, Role } from '@prisma/client';
-import { PrismaAuthSessionRepository } from '../../src/modules/auth/infrastructure/prisma-auth-session.repository.js';
+import { createPrismaAuthSessionRepository } from '../../src/modules/auth/infrastructure/prisma-auth-session.repository.js';
+import { IAuthSessionRepository } from '../../src/modules/auth/domain/auth-session.repository.interface.js';
 import { UnauthorizedError } from '../../src/shared/errors/app-error.js';
 import { randomUUID } from 'node:crypto';
 
 describe('PrismaAuthSessionRepository (Integration)', () => {
   let prisma: PrismaClient;
-  let sessionRepo: PrismaAuthSessionRepository;
+  let sessionRepo: IAuthSessionRepository;
   let testUserId: string;
 
   beforeAll(async () => {
     prisma = new PrismaClient();
     await prisma.$connect();
-    sessionRepo = new PrismaAuthSessionRepository(prisma);
+    sessionRepo = createPrismaAuthSessionRepository(prisma);
   });
 
   afterAll(async () => {
